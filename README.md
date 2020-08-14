@@ -26,7 +26,7 @@ Once I was able to pull NSSP Priority elements from an HL7 message, I moved on t
 The last project task was to create a comprehensive dataframe of message errors.
 In general, each row describes the error and how to fix it.
 
-## Project Structure
+## Repository Structure
 
 There are three primary folders and one optional folder within this repository:
 * data - where data files are stored
@@ -36,13 +36,56 @@ There are three primary folders and one optional folder within this repository:
     * NSSP_Validity_Reader - file describing characteristics of valid NSSP Priority Elements and code as to check for validity.
     * Message_Corrector_Key - file with important information about element locations and code to provide suggestions for invalid values.
     
-* python 
-  *dakf
+* python - Jupyter Notebooks / Python Files that make up the bulk of the project.
+  * pj_funcs.py - file that holds all of my defined functions from the entire project.
+  All functions are well-annotated and can be seen by typing the name of a function followed by a question mark in a jupyter notebook cell and then running it.
+  An example of this would be `NSSP_Element_Grabber?'
+  
+  * 1.  NSSP Element Grabber Explanation - file that describes in detail the process behind creating NSSP_Element_Grabber().
+  * 2.  Visit Timeliness Report by Facility - file that describes in detail the process behind creating timeliness_facvisits_hours().
+  * 3.  Visit Completeness Report by Facility - file that describes in detail the process behind creating completeness_facvisits().
+  * 4.  Issues By HL7 Message - file that describes in detail the process behind creating issues_in_messages().
+  * Experimentation Ideas - file that shows the functionality of all of my functions and describes potential useful code.
+  * Your Notebook - file for user to experiment with my functions and play around.
+  
+ * pics/ - directory where some supporting images for our markdown cells live
+
+* supporting - all documents that aided me in determining my procedure and how I went about this project.
+
+* figures (optional) - directory to place any useful images you may plot.
+
+## User ACTION REQUIRED
+
+<ol>
+ <li> You need to run an SQL query on the PHESS ED (emergency department) data.
+  Save the data as a csv file within the 'data/raw/' directory. </li>
+ <li> If you are curious as to how my functions were created, read through python files 1. , 2. , 3. , or 4. </li>
+ <li> Otherwise, read through 'python/Experimentation Ideas' to see my functions in action </li>
+ <li> Navigate to 'python/Your Notebook' and experiment for yourself. </li>
+</ol>
+
+## External Supporting Libraries
+
+[Pandas](https://pandas.pydata.org/) - this library is of Python's finest libraries for managing, querying, and writing dataframes.
+This library was crucial to this project.  
+
+[HL7](https://python-hl7.readthedocs.io/en/latest/) - this library provided a smooth path to navigate an HL7 message, a complex tree-structured dataframe that varies message-to-message.
+
+[Numpy](https://numpy.org/) - this library makes working with lists much easier.
+It is also extremely compatible with pandas.
+
+[Matplotlib](https://matplotlib.org/) - this library is wonderful for plotting.
+
+Some of Python's useful internal supporting libraries included Time (for keeping track of runtimes) and Re (for using Regular Expressions)
 
 
+## The Author
+PJ Gibson - Data Analyst for Indiana State Department of Health
 
-
-
-Because we need to parse through an HL7 message, a complex tree structured dataframe that varies message-to-message, I use the help of the [HL7 Library](https://python-hl7.readthedocs.io/en/latest/).
-The library is mostly useful for indexing an HL7 Message.
-
+## Special Thanks
+* Harold Gil - Director of Public Health Informatics for Indiana State Department of Health.
+Harold assigned me this project, gave me relevant supporting documentation, and helped me along the way with miscellaneous troubleshooting.
+* Matthew Simmons - Data Analyst for Indiana State Department of Health.
+Matthew helped walk me through some troubleshooting and was a supportive figure throughout the project.
+* Shuennhau Chang, Logan Downing, Ryan Hastings, Nicholas Hinkley, Rachel Winchell.
+Members of my informatics team that also supported me indirectly!
