@@ -120,12 +120,15 @@ def completeness_facvisits(df, Timed = False):
 
     start_time = time.time()
     
-    # Create array of Falses.  Useful down the road
+    # Make a visit indicator that combines facility|mrn|visit_num
+    df['VISIT_INDICATOR'] = df[['FACILITY_NAME', 'PATIENT_MRN', 'PATIENT_VISIT_NUMBER']].astype(str).agg('|'.join, axis=1)
+
+    # Create array of Falses.  Useful down the road 
     false_array = np.array([False] * len(df.columns))
 
     # Create empty dataframe we will eventually insert into
     empty = pd.DataFrame(columns=df.columns)
-    
+
     # Create empty lists for facility_names (facs) and number of patients in a facility (num_patients)
     # These lists will serve as our output's descriptive indexes
     num_visits = []
@@ -133,57 +136,52 @@ def completeness_facvisits(df, Timed = False):
 
     # First sort our data by Facility Name.  Sort=False speeds up runtime
     fac_sort = df.groupby('FACILITY_NAME',sort=False)
-    
+
     # Iterate through the groupby object
     for facility, df1 in fac_sort:
 
         # Append facility name to empty list
         facs.append(facility)
-        
+
         # Initiate visit count
         visit_count = 0
-        
+
         # Sort by Patient MRN
-        MRN_sort = df1.groupby(['PATIENT_MRN'],sort=False)
-        
+        MRN_sort = df1.groupby(['VISIT_INDICATOR'],sort=False)
+
         # Initiate list of 0s.  Each column gets +1 for each visit with a non-null column value.
         countz = false_array.copy().astype(int)
-        
-        for patient, df2 in MRN_sort:
-            
-            # Sort further by Patient Visit Number
-            VisNum_sort = df2.groupby(['PATIENT_VISIT_NUMBER'],sort=False)
-            
-            for visit, df3 in VisNum_sort:
-                
-                # Initiate array of falses
-                init = false_array.copy()
-                
-                # Looping through the visits ADT data rows, look for non_null values.  True if non-null. 
-                #       Use OR-logic to replace 0s in init with 1s and keep 1s as 1s for each iterated row.
-                for i in np.arange(0,len(df3)):
-                    init = init | (df3.iloc[i].notnull())
-                
-                # Add information on null (0) vs. non-null (1) columns to countz which is initially all 0 but updates for each patient.
-                countz += init.astype(int)
-                
-                # Show that the number of visits has increased
-                visit_count += 1
 
-        
+        for visit, df3 in MRN_sort:
+
+
+            # Initiate array of falses
+            init = false_array.copy()
+
+            # Looping through the visits ADT data rows, look for non_null values.  True if non-null. 
+            #       Use OR-logic to replace 0s in init with 1s and keep 1s as 1s for each iterated row.
+            for i in np.arange(0,len(df3)):
+                init = init | (df3.iloc[i].notnull())
+
+            # Add information on null (0) vs. non-null (1) columns to countz which is initially all 0 but updates for each patient.
+            countz += init.astype(int)
+
+            # Show that the number of visits has increased
+            visit_count += 1
+
+
         # Append visit number to empty list
         num_visits.append(visit_count)
-        
+
         # Update empty dataframe with information on completeness (out of 100%) we had for each column
         # * note countz is a 1D array that counts how many visits have non-null values in each column.
         empty.loc[facility,:] = (countz/visit_count)*100
-        
-        
+
+
     # Clarify and Create index information for output Dataframe
     empty['Num_Visits'] = num_visits
     empty['Facility'] = facs
     empty = empty.set_index(['Facility','Num_Visits'])
-    
     # Keep track of end time
     end_time = time.time()
     
@@ -1025,7 +1023,7 @@ def priority_cols(df, priority='both', extras=None, drop_cols=None):
         return new
     
     elif (priority.upper() == 'TWO')|(priority == '2'):
-        cols = reader['Processed Column'][(reader.Priority == 1.0)]
+        cols = reader['Processed Column'][(reader.Priority == 2.0)]
         if extras != None:
             cols = list(cols)
             for item in extras:
