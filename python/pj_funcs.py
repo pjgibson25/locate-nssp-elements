@@ -15,7 +15,11 @@ import matplotlib.pyplot as plt
 import matplotlib
 from matplotlib import colors
 
-
+# Plotly--yeet
+import plotly.figure_factory as ff
+import plotly
+from plotly.offline import iplot
+import plotly.graph_objects as go
 
 
 
@@ -1631,3 +1635,474 @@ def issues_in_messages(df, Timed=True, combine_issues_on_message = False, split_
         print('Time Elapsed:   '+str(round((end_time-start_time),3))+' seconds')
         
     return df_out
+
+
+###########################################################################################################################################################
+###########################################################################################################################################################
+###########################################################################################################################################################
+
+def validity_and_completeness_report(df,description='long',visit_count=False,outfile=None, Timed=True):
+    '''
+    
+    dataframe1 -> Returns completenesss report by hospital with facility,element,percentmissing,percentinvalid,description
+    dataframe2 -> Determines the incompleteness (0), invalid (1), or valid and complete (2) for every element in all messages
+    
+    
+    Parameters
+    ----------
+    df: pandas DataFrame, required (output from NSSP_Element_Grabber() funciton)
+    
+    description:  str, optional.  (Either 'long' or 'short')
+        if 'short', description of location is shorter and less descriptive
+        elif 'long', description is sentence structured and descriptive
+    
+    visit_count:  bool, optional
+        if True, add the number of visits to dataframe2
+        
+    outfile: string, optional
+        if True, send excel file to ../data/processed.  Name defined by outfile
+        *DO NOT INCLUDE .xlsx or full path
+    
+    
+    Returns
+    -------
+    df1
+        Dataframe showing issues in messages for each hospitals.  Report structure
+    
+    df2
+        Dataframe assessing all messages for incomlete,invalid,valid elements represented as 0s, 1s, and 2s
+        
+        
+    Requirements
+    ------------
+    -from pj_funcs import *
+    
+    '''
+
+    start_time = time.time()
+    
+    # Get validity and completion reports (0s and 1s)
+    v = validity_check(df,Timed=False)
+    c = priority_cols(~df.isnull())
+
+    ###########################################################################################
+
+    # Check out completion report for columns that can be assessed for validity
+    only_validity = c[v.columns]
+
+    # Look out elements that can ONLY be assessed for completion.  Completes now become 2s
+    no_valid_checks = list(set(list(c.columns)) - set(list(v.columns)))
+    only_completion = c[no_valid_checks]
+    only_completion = only_completion.astype(int).replace(1,2)
+
+    # For elements that can be assessed for validity, make it 0s, 1s, 2s.
+    validity_completion = only_validity.astype(int) + v.astype(int)
+
+    # Join together validity and completeness stuffz
+    df012s = only_completion.join(validity_completion)
+
+    # Append facility name and visit information to dataframe.
+    df012s['FacName'] = df.FACILITY_NAME
+    df012s['VisInd'] = df.FACILITY_NAME+'|'+df.PATIENT_MRN+'|'+df.PATIENT_VISIT_NUMBER
+
+    ###########################################################################################
+
+
+    if visit_count == False:
+        empty = pd.DataFrame(columns=['Facility','Element','Percent Missing','Percent Incomplete','Description'])
+
+    else:
+        empty = pd.DataFrame(columns=['Facility','Visit Count','Element','Percent Missing','Percent Incomplete','Description'])
+
+
+
+    # Create empty dataframe to append our information to 
+    empty = pd.DataFrame(columns=['Facility','Element','Percent Missing','Percent Incomplete','Description'])
+    empty['Description'] = [np.nan]*len(df012s)
+
+    # Set initial index
+    cur_num = 0
+
+    # Group by Facility 
+    g1 = df012s.groupby('FacName')
+
+    for ind1, frame1 in g1:
+
+        # Create empty list (l) to append to
+        l = []
+
+        # Group by Visit Index (looks like Facility|MRN|VisitNum)
+        g2 = frame1.groupby('VisInd')
+
+        # Loop though visits
+        for ind2,frame2 in g2:
+
+            # Only want 0s,1s,2s.  No facility name or visit identifier
+            f = frame2.drop(['FacName','VisInd'],axis=1) 
+
+            # Only take the max value for elements considering all rows in a single visit. 
+            ##### ex: If Patient_Age is 0,0,0,1,2 in respective rows, only take 2 which represents complete and valid.
+            l.append(f.max())
+
+        # Get a summary of all visits
+        summary = pd.DataFrame(l)
+
+        # Length of this represents all visits
+        total_visits = len(summary)
+
+        # Check to see what percent are incomplete and invalid
+        cond_complete =(((summary == 0).sum() / len(summary) * 100))
+        cond_invalid = (((summary == 1).sum() / len(summary) * 100))
+
+        # Check out any element that has any percent incomplete or invalid
+        reportable_incompletes = cond_complete[cond_complete>0]
+        reportable_invalids = cond_invalid[cond_invalid>0]
+
+        # Combine any elements that might be partially incomplete or invalid
+        report = pd.concat([reportable_incompletes,reportable_invalids],axis=1)
+
+        if visit_count == False:
+            # Loop through all bad entries
+            for i in np.arange(0,len(report)):
+
+                # Append important information to the empty dataframe 
+                importants = ind1,report.index[i],np.round(report.iloc[i,0],2),np.round(report.iloc[i,1],2),np.nan
+                empty.iloc[cur_num] = importants
+
+                # Update the index count
+                cur_num += 1
+
+        else:
+            for i in np.arange(0,len(report)):
+
+                # Append important information to the empty dataframe 
+                importants = ind1,total_visits,report.index[i],np.round(report.iloc[i,0],2),np.round(report.iloc[i,1],2),np.nan
+                empty.iloc[cur_num] = importants
+
+                # Update the index count
+                cur_num += 1
+
+
+    empty = empty.dropna(axis=0,how='all')
+
+    #####################################################################################################################
+
+    if description == 'long':
+        key = pd.read_excel('../data/processed/Message_Corrector_Key.xlsx')
+        key = key.set_index('Element')
+        for i in np.arange(0,len(empty)):
+            el = empty.loc[i,'Element']
+            empty.loc[i,'Description'] = key.loc[el,'Description']
+
+    elif description == 'short':
+        key = pd.read_excel('../data/processed/NSSP_Element_Reader.xlsx')
+        key = key.set_index('Processed Column')
+        for i in np.arange(0,len(empty)):
+            el = empty.loc[i,'Element']
+            empty.loc[i,'Description'] = key.loc[el,'HL7 Segment(s)']
+
+
+    #####################################
+
+    if outfile != None:
+
+        if visit_count == False:
+            empty = empty.set_index(['Facility','Element'])
+            empty.to_excel('../data/processed/'+outfile+'.xlsx')
+
+        else:
+            empty = empty.set_index(['Facility','Visit Count','Element'])
+            empty.to_excel('../data/processed/'+outfile+'.xlsx')
+            
+            
+    # Keep track of end time
+    end_time = time.time()
+    
+    # If user requests to see elapsed time, show them it in seconds
+    if Timed == True:
+        print('Time Elapsed:   '+str(round((end_time-start_time),3))+' seconds')
+    
+            
+    return empty, df012s
+
+###########################################################################################################################################################
+###########################################################################################################################################################
+###########################################################################################################################################################
+
+def RegEx_on_Full_DataFrame(df, find, replace):
+    '''
+    Sometimes you want to apply regex find/replace on an entire dataframe.
+    * Reminder * -> group one indicated by '\g<1>' in regex
+    
+    Input:
+    ------
+    df - pd.Dataframe, required
+    find - str, required (RegEx form)
+    replace - str, required (RegEx form)
+    
+    Output:
+    -------
+    df - pd.Dataframe
+    
+    Method:
+    -------
+    1. Convert the dataframe to a 2D numpy array
+    2. Flatten that array making it 1D (think of it as stretching it)
+    3. Convert flattened version to pd.Series to apply str.replace() using RegEx
+    4. After RegEx application, convert back to array, reshape to same as step 1.
+    5. Convert 2D numpy array back to pd.Dataframe with original columns
+    
+    Requirements:
+    -------------
+    import pandas as pd
+    import numpy as np
+    
+    '''
+    original_cols = df.columns
+    
+    numpy_2d = np.array(df)
+    original_shape = numpy_2d.shape
+    
+    numpy_1d = numpy_2d.flatten()
+    series_1d = pd.Series(numpy_1d)
+    
+    series_application = series_1d.str.replace(find,replace)
+    
+    back_to_numpy_1d = np.array(series_application)
+    back_to_numpy_2d = back_to_numpy_1d.reshape(original_shape)
+    
+    
+    out_df = pd.DataFrame(back_to_numpy_2d,columns=original_cols)
+    
+    out_df = out_df.set_index(df.index)
+    
+    return out_df
+
+
+
+###########################################################################################################################################################
+###########################################################################################################################################################
+###########################################################################################################################################################
+
+
+
+def Visualization_interactive(df_before,df_after,str_date_list,priority='both_combined',outfile=False,show_plot=False,Timed=True):
+    
+    '''
+    Creates an annotated heatmap that is interactive with hoverover.
+    Heatmap colors represent data completeness as of the first date
+    Annotations show the completion percent change with respect to the second date
+        (+ indicates increased completeness)
+
+    Parameters
+    ----------
+    df_before : pandas.DataFrame, required (output of NSSP_Element_Grabber() Function)
+        -must be the dataframe representing EARLIER data
+        
+    df_after : pandas.DataFrame, required (output of NSSP_Element_Grabber() Function)
+        -must be the dataframe representing LATER data
+        
+    str_date_list:  list of strings, required
+        -best form example: ['Feb 1 2020','Aug 31 2020']
+        
+    *priority: str, optional (default = 'both combined')
+        -describes output visualization.  Valid options include 'both_combined','both_individuals','1','2'
+            both_combined writes all NSSP Priority 1&2 to one x axis
+            both_individual writes two separate figures for Priority 1 and 2 respectively
+            
+    *outfile: bool, optional (default = False)
+        -writes .html file to folder '../figures/'
+        -if str_date_list=['Feb 1 2020','Aug 31 2020'] and priority='both combined',
+            outfile has name -> Feb12020_to_Aug312020_priority1and2.html
+        
+    *show_plot: bool, optional (default = False)
+        - displays the figure
+        
+    *Timed : bool, optional (default = True)
+        -gives completion time in seconds
+    
+    Returns
+    -------
+    nothing
+        
+    Requirements
+    ------------
+    from pj_funcs import *
+    
+    '''
+    # Initialize time
+    start_time = time.time()
+
+    # Only Check out priority columns of our dataframes and separate by priority 1 and 2
+    
+    before1 = priority_cols(df_before, priority='1',
+                  extras=['FACILITY_NAME','PATIENT_VISIT_NUMBER','PATIENT_MRN'],
+                  drop_cols=['Site_ID','C_Facility_ID'])
+    
+    before2 = priority_cols(df_before, priority='2',
+                  extras=['FACILITY_NAME','PATIENT_VISIT_NUMBER','PATIENT_MRN'])
+    
+    after1 = priority_cols(df_after, priority='1',
+                  extras=['FACILITY_NAME','PATIENT_VISIT_NUMBER','PATIENT_MRN'],
+                  drop_cols=['Site_ID','C_Facility_ID'])
+    
+    after2 = priority_cols(df_after, priority='2',
+                  extras=['FACILITY_NAME','PATIENT_VISIT_NUMBER','PATIENT_MRN'])
+
+
+    #######################################################################
+
+    # Check for completeness and then only look at priority columns
+    before1_comp = priority_cols(completeness_facvisits(before1))
+    before2_comp = priority_cols(completeness_facvisits(before2))
+    after1_comp = priority_cols(completeness_facvisits(after1))
+    after2_comp = priority_cols(completeness_facvisits(after2))
+
+
+    #######################################################################
+
+    # Set the index to what we want (Facility) and sort the index
+    before1_comp = (before1_comp.reset_index().drop(['Num_Visits'],axis=1).set_index('Facility')).sort_index()
+    before2_comp = (before2_comp.reset_index().drop(['Num_Visits'],axis=1).set_index('Facility')).sort_index()
+    after1_comp = (after1_comp.reset_index().drop(['Num_Visits'],axis=1).set_index('Facility')).sort_index()
+    after2_comp = (after2_comp.reset_index().drop(['Num_Visits'],axis=1).set_index('Facility')).sort_index()
+    
+    # Create a combined dataset with priority 1 and 2 elements
+    before_combined = before1_comp.join(before2_comp)
+    after_combined = after1_comp.join(after2_comp)
+    
+    
+
+    #######################################################################
+
+    # Find out the differences between the two dates
+    #     use RegEx to add - to negative values, + to positive values, and remove 0 change to clear clutter
+    priority_one = (after1_comp - before1_comp).astype(float).round(0).astype(int)
+    diffs_1 = RegEx_on_Full_DataFrame(RegEx_on_Full_DataFrame(priority_one.astype(str),'^([^-0])','+\g<1>'),'^0$','')
+
+    priority_two = (after2_comp - before2_comp).astype(float).round(0).astype(int)
+    diffs_2 = RegEx_on_Full_DataFrame(RegEx_on_Full_DataFrame(priority_two.astype(str),'^([^-0])','+\g<1>'),'^0$','')
+
+    # Sort the indices and create a combined version with prioirty 1 and 2 elements
+    diffs_1 = diffs_1.sort_index()
+    diffs_2 = diffs_2.sort_index()
+    
+    diffs_combined = diffs_1.join(diffs_2)
+
+    #######################################################################
+
+    # Based on user input for priority, set a few important values we'll use for plotting
+    
+    if priority == 'both_combined':
+        bases = [before_combined]
+        afters = [after_combined]
+        diffs = [diffs_combined]
+        prio = ['1 and 2']
+    
+    
+    elif priority == 'both_individuals':
+        bases = [before1_comp,before2_comp]
+        afters = [after1_comp,after2_comp]
+        diffs = [diffs_1,diffs_2]
+        prio = ['1','2']
+        
+    elif priority == '1':
+        bases = [before1_comp]
+        afters = [after1_comp]
+        diffs = [diffs_1]
+        prio = ['1']
+        
+    elif priority == '2':
+        bases = [before2_comp]
+        afters = [after2_comp]
+        diffs = [diffs_2]
+        prio = ['2']
+        
+    else:
+        print('ERROR: Please enter a correct value for priority\nOptions are \'both_combined\',\'both_individuals\',\'1\', or \'2\'')
+
+    #######################################################################
+        
+        
+    # Loop through the number of plots we'll need to make (either 1 or 2)
+    for zz in np.arange(0,len(bases)):
+        
+        # Get important information
+        base = bases[zz]
+        after = afters[zz]
+        diff = diffs[zz]
+        pri = prio[zz]
+
+        # Create a list of lists that describes all hoverover text
+        colnames = [list(base.columns)]*len(base)
+        hover=[]
+        for x in range(len(np.array(base))):
+            hover.append(['Facility: '+str(base.index[x])+'<br>'+'Element: '+str(k)+'<br>'+'----'+'<br>'+'Completion Before: ' + str(np.round(i,1)) + '%' + '<br>' + 'Completion After: ' + str(np.round(j,1)) + '%'
+                              for i, j, k in zip(np.array(base)[x], np.array(after)[x], colnames[x])])
+
+        #######################################################################
+
+        # Make heatmap elements as simple variables
+        heat = np.array(base.astype(float))
+        z_text = np.array(diff)
+        x = np.array(base.columns)
+        y = np.array(base.index)
+
+        # Create two seperate text annotations to be written.  One for positive changes, one for negatives.
+        #      we do this because + will have green color, - will have reddish black color
+        negs = RegEx_on_Full_DataFrame(pd.DataFrame(z_text).astype(str),'\+.*','')
+        poss = RegEx_on_Full_DataFrame(pd.DataFrame(z_text).astype(str),'-.*','')
+
+        #######################################################################
+
+        # Create a large heatmap with descriptive title
+        layout_heatmap = go.Layout(
+            title=('NSSP Priority '+pri+' Element Completeness Report<br>Heatmap:  Completeness as of '+str_date_list[0]+'<br>Annotations:  Completeness change (%) as of '+str_date_list[1]),
+            title_x=0.5,
+            xaxis=dict(title='NSSP Priority Element'), 
+            yaxis=dict(title='Indiana Facility', dtick=1),
+            autosize=False,
+            width=1500,
+            height=1000
+        )
+
+        # Make one heatmap with positive value annotations in green (see font_colors arg)
+        ff_fig1 = ff.create_annotated_heatmap(heat,x=list(x), y=list(y),annotation_text=np.array(poss), colorscale='rdylgn',hoverinfo='text',
+                                         text=hover,font_colors=['rgb(0, 253, 0)','rgb(0, 253, 0)'],showscale = True)
+
+        # Make exact same heatmap with negative value annotations in reddish-black (see font_colors arg)
+        ff_fig2 = ff.create_annotated_heatmap(heat,x=list(x), y=list(y),annotation_text=np.array(negs), colorscale='rdylgn',hoverinfo='text',
+                                         text=hover,font_colors=['rgb(76, 0, 0)','rgb(76, 0, 0)'],showscale = True)
+
+
+        # Append out heatmap, its annotations, and a colorbar to our figure
+        fig  = go.FigureWidget(ff_fig1)
+        fig.layout=layout_heatmap
+        fig.layout.annotations = ff_fig1.layout.annotations + ff_fig2.layout.annotations
+        fig.data[0].colorbar = dict(title='Percent Complete', titleside = 'right')
+        
+        # Read in optional user argument if they want to see plot
+        if show_plot == True: 
+            iplot(fig)
+            
+        # Read in optional user argument to see if they want to save file.  I customized the name to be as descriptive as possible.
+        if outfile == True:
+            filename = ('_to_'.join(str_date_list)+'_priorty'+pri+'.html').replace(' ','')
+            fig.write_html('../figures/'+filename)
+
+    # Keep track of end time
+    end_time = time.time()
+    
+    # If user requests to see elapsed time, show them it in seconds
+    if Timed == True:
+        print('Time Elapsed:   '+str(round((end_time-start_time),3))+' seconds')
+
+
+###########################################################################################################################################################
+###########################################################################################################################################################
+###########################################################################################################################################################
+
+
+
+
+
